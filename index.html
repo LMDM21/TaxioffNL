@@ -47,7 +47,7 @@
 
 <script>
   // Mets ici l'URL de ton script Google Apps déployé en Web App (avec droits public)
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKhK9U7hdfFSXOlVpmN8MlMHORyNIGnVh_EaYShYvfPtMFZvWSZl8MX_uaPTToNGiZgQ/exec";
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2c0ggbtPM_b3hy2ZtegilQ05I1rLenKdjET4jUb8q6uMJ9MffjrzzfmXvxlE18Ce4_A/exec";
 
   let currentId = null;
 
@@ -147,8 +147,30 @@
     }
   }
 
-  function newEntry() {
-    generateId("(nouveau)");
+  async function fetchExistingIds() {
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL);
+      if (!response.ok) throw new Error("Erreur réseau lors de récupération des IDs");
+      const ids = await response.json();
+      return ids; // tableau des IDs existants, exemple ["1", "2", "3"]
+    } catch(e) {
+      alert("Impossible de récupérer les IDs existants : " + e.message);
+      return [];
+    }
+  }
+
+  async function generateUniqueId() {
+    const existingIds = await fetchExistingIds();
+    let newId = 1;
+    while (existingIds.includes(newId.toString())) {
+      newId++;
+    }
+    return newId.toString();
+  }
+
+  async function newEntry() {
+    const newId = await generateUniqueId();
+    generateId(newId);
     document.getElementById("searchId").value = "";
     document.getElementById('email').value = "";
     document.getElementById('debanDate').value = "";
@@ -158,12 +180,18 @@
   }
 
   async function submitData() {
-    if (!currentId || currentId === "(nouveau)") {
-      alert("La création automatique d'ID n'est pas encore implémentée. Veuillez saisir un ID dans la recherche avant d'enregistrer.");
+    if (!currentId) {
+      alert("ID non généré. Veuillez créer une nouvelle fiche ou rechercher une fiche existante.");
       return;
     }
+
     const email = document.getElementById('email').value.trim();
     const deban = document.getElementById('debanDate').value;
+
+    if (!email) {
+      alert("L'email est requis.");
+      return;
+    }
 
     const sanctions = [];
     const rows = document.querySelectorAll("#sanctionsTable tbody tr");
@@ -174,28 +202,31 @@
       const min = tr.cells[3].querySelector('input').value;
       const max = tr.cells[4].querySelector('input').value;
       const date = tr.cells[5].querySelector('input').value;
-      sanctions.push({ statut, steamId, motif, min, max, date, email, deban, id: currentId });
+      sanctions.push({ statut, steamId, motif, min, max, date, email, deban });
     });
 
+    // Envoi au serveur Google Script
     try {
       const resp = await fetch(GOOGLE_SCRIPT_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sanctions)
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ id: currentId, email, deban, sanctions })
       });
-      if (!resp.ok) throw new Error("Erreur réseau");
-      const text = await resp.text();
-      alert("Données enregistrées avec succès !");
-    } catch (e) {
-      alert("Erreur lors de l'enregistrement : " + e.message);
+      if (!resp.ok) throw new Error("Erreur lors de l'enregistrement");
+      const result = await resp.text();
+      alert("Enregistrement réussi : " + result);
+    } catch(e) {
+      alert("Erreur : " + e.message);
     }
   }
 
-  // Au chargement, crée une ligne vide par défaut
-  addSanctionRow();
+  // Au démarrage, on crée une nouvelle fiche vide
+  newEntry();
+
 </script>
 
 </body>
 </html>
+
 
 
